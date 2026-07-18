@@ -540,7 +540,7 @@ async function rxTxSendCommand(cmd) {
 	  } else {
 		  addLog('未连接蓝牙，串口服务不可用')
 	  }
-  } catch (err)
+  } catch (err) {
 	  addLog(`串口指令发送失败：${err.message}`);
   }
 }
@@ -735,7 +735,7 @@ async function connect() {
 			document.getElementById("connectbutton").innerHTML = '断开连接';
 			await connectRXTX();
 		}
-	} catch (err)
+	} catch (err) {
 		addLog(`设备连接异常：${err.message}`);
 		disconnect();
 	}
