@@ -994,7 +994,7 @@ async function sendBufferSerial(hexStr, codeType){
 	}
 	isBusySending = true;
 	// 分片大小缩减为120，适配8258缓存
-	const CHUNK_LEN = 120;
+	const CHUNK_LEN = 60;
 	let index = 0;
 	const totalLen = hexStr.length;
 	const code = codeType === 'bwr' ? '00' : 'ff';
@@ -1035,7 +1035,7 @@ async function upload_tiff_image() {
 	await sendCommand(hexToBytes("0000"));
 	await sendCommand(hexToBytes("020000"));
 
-	const step = 120;
+	const step = 60;
 	let partIndex = 0;
 	for (let i = 0; i < arr.length; i += step) {
 		addLog(`正在上传第${partIndex+1}块. 块长度: ${step}字节`);
