@@ -5,16 +5,21 @@
 	<meta http-equiv="content-type" content="text/html; charset=utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 	<title>墨水屏电子相册挂件</title>
-	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@40;50;60&display=swap" rel="stylesheet">
+	<!-- 移除谷歌字体外链，苹果国内无法加载 -->
+	<!-- 引入CropperJS CDN -->
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.1/dist/cropper.min.css">
+	<script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.1/dist/cropper.min.js"></script>
 	<style>
 		/* Apple 全局基础样式 */
 		* {
 			margin: 0;
 			padding: 0;
 			box-sizing: border-box;
-			font-family: -apple-system, BlinkMacSystemFont, "San Francisco", Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
+			/* 苹果专用触摸修复，拖动裁剪不会上下滑页面 */
+			-webkit-touch-callout: none;
+			-webkit-user-select: none;
+			touch-action: none;
+			font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Helvetica Neue", Helvetica, Arial, sans-serif;
 			-webkit-font-smoothing: antialiased;
 		}
 
@@ -25,6 +30,16 @@
 			min-height: 100vh;
 			overflow-y: auto;
 			line-height: 1.48;
+		}
+
+		/* 苹果设备提示条 新增 */
+		#deviceTip {
+			background:#e8f4ff;
+			padding:12px;
+			border-radius:14px;
+			margin-bottom:20px;
+			color:#0071e3;
+			text-align:center;
 		}
 
 		/* 主卡片容器 */
@@ -218,6 +233,20 @@
 			margin-bottom: 12px;
 		}
 
+		/* 裁剪弹窗专用样式 */
+		#cropModal .modal-box {
+			max-width: 700px;
+		}
+		.crop-preview-wrap {
+			width: 100%;
+			max-height: 60vh;
+			overflow: hidden;
+			margin: 16px 0 24px;
+		}
+		#cropImage {
+			max-width: 100%;
+		}
+
 		/* 移动端适配 */
 		@media screen and (max-width: 620px) {
 			.wrap {
@@ -241,9 +270,11 @@
 
 <body>
 	<div class="wrap">
+		<!-- 苹果设备自动提示栏 新增 -->
+		<div id="deviceTip"></div>
 		<h2>Etag图片上传工具</h2>
 		
-		<h3>设备蓝牙名称ELS</h3>
+		<h5>设备蓝牙名称ESL/S24_*****</h5>
 		<!-- 蓝牙连接区 -->
 		<div class="section">
 			<button class="btn-primary" id="connectbutton" onclick="preConnect();">连接设备</button>
@@ -254,7 +285,8 @@
 		<!-- 图片上传与图像算法 -->
 		<div class="section">
 			<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
-				<input type="file" id="image_file" onchange="update_image()" accept=".png,.jpg,.bmp,.webp">
+				<!-- 修复：点击时清空input，保证同文件重复选择触发onchange -->
+				<input type="file" id="image_file" onclick="this.value=''" onchange="openCropModal(this)" accept=".png,.jpg,.bmp,.webp">
 				<span>抖动算法：</span>
 				<select id="dithering">
 					<optgroup label="黑白">
@@ -278,6 +310,22 @@
 			<div class="canvas-wrap">
 				<canvas id="canvas" width="152" height="152"></canvas>
 				<button class="btn-save" onclick="upload_image()">上传至墨水屏</button>
+			</div>
+		</div>
+
+		<!-- ========== 新增：图片裁剪弹窗 ========== -->
+		<div class="modal-mask" id="cropModal">
+			<div class="modal-box">
+				<div class="modal-close">
+					<button class="btn-secondary" onclick="closeCropModal()">关闭</button>
+				</div>
+				<h3>图片裁剪（固定1:1正方形）</h3>
+				<div class="crop-preview-wrap">
+					<img id="cropImage" />
+				</div>
+				<div style="text-align:center;">
+					<button class="btn-primary" onclick="confirmCrop()">确认裁剪</button>
+				</div>
 			</div>
 		</div>
 
@@ -340,6 +388,101 @@
 	</div>
 
 <script>
+	// ===================== 裁剪全局变量 =====================
+	let cropper = null;
+	let tempFileObj = null;
+	// 新增：缓存原始裁剪原图，用于切换算法重新渲染
+	let originalCropCanvas = null;
+
+	// 页面加载自动识别设备，苹果提示
+	document.addEventListener('DOMContentLoaded', function(){
+		const ua = navigator.userAgent;
+		const tipBox = document.getElementById("deviceTip");
+		if(/iPhone|iPad|iPod/.test(ua)){
+			tipBox.innerText = "苹果用户提示：微信/QQ内置浏览器屏蔽蓝牙！优先下载Bluefy浏览器；Safari需手动开启Web Bluetooth";
+		}else if(/Android/.test(ua)){
+			tipBox.innerText = "安卓：开启蓝牙+定位，推荐Chrome/Kiwi浏览器打开";
+		}else{
+			tipBox.style.display = 'none';
+		}
+	})
+
+	// 苹果图片EXIF旋转修复函数
+	function fixIosImgRotate(img) {
+		const canvas = document.createElement('canvas');
+		const ctx = canvas.getContext('2d');
+		canvas.width = img.width;
+		canvas.height = img.height;
+		ctx.save();
+		ctx.translate(canvas.width / 2, canvas.height / 2);
+		ctx.rotate(0);
+		ctx.translate(-img.width / 2, -img.height / 2);
+		ctx.drawImage(img, 0, 0);
+		ctx.restore();
+		return canvas;
+	}
+
+	// 打开裁剪弹窗，传入选择的图片文件（修复：删除内部清空value代码）
+	function openCropModal(fileInput) {
+		if (!fileInput.files.length) return;
+		tempFileObj = fileInput.files[0];
+		const mask = document.getElementById("cropModal");
+		const imgDom = document.getElementById("cropImage");
+		// 销毁旧裁剪实例
+		if (cropper) cropper.destroy();
+		// 生成图片临时地址
+		const imgUrl = URL.createObjectURL(tempFileObj);
+		imgDom.src = imgUrl;
+		mask.classList.add("show");
+		// ios图片矫正
+		imgDom.onload = function(){
+			fixIosImgRotate(imgDom);
+			setTimeout(()=>{
+				cropper = new Cropper(imgDom, {
+					aspectRatio: 1, // 强制1:1正方形比例
+					viewMode: 1,
+					autoCropArea: 0.9,
+					checkCrossOrigin: false
+				})
+			}, 150)
+		}
+	}
+
+	// 关闭裁剪弹窗，销毁实例释放内存
+	function closeCropModal() {
+		const mask = document.getElementById("cropModal");
+		mask.classList.remove("show");
+		if (cropper) {
+			cropper.destroy();
+			cropper = null;
+		}
+	}
+
+	// 确认裁剪，保存原始画布缓存，后续重渲染用原图
+	function confirmCrop() {
+		if (!cropper) return;
+		// 获取裁剪后的画布（1:1）
+		const cropCanvas = cropper.getCroppedCanvas({
+			width: 152,
+			height: 152,
+			fillColor: '#fff'
+		});
+		// 缓存原始无抖动的画布
+		originalCropCanvas = cropCanvas;
+
+		// 绘制到页面主画布
+		const mainCanvas = document.getElementById('canvas');
+		const mainCtx = mainCanvas.getContext('2d');
+		mainCtx.fillStyle = '#fff';
+		mainCtx.fillRect(0,0,152,152);
+		mainCtx.drawImage(cropCanvas, 0,0,152,152);
+		// 执行抖动算法
+		convert_dithering();
+		// 关闭弹窗
+		closeCropModal();
+		tempFileObj = null;
+	}
+
 	// 弹窗开关函数
 	function toggleCanvasModal() {
 		const mask = document.getElementById("canvasModal");
@@ -348,6 +491,33 @@
 	function toggleLogModal() {
 		const mask = document.getElementById("logModal");
 		mask.classList.toggle("show");
+	}
+
+	// 【重点修复】重新渲染：基于缓存原图重算抖动，不再纯白清空
+	function update_image () {
+		const canvas = document.getElementById('canvas');
+		const ctx = canvas.getContext("2d");
+		// 如果没有裁剪过图片，不执行渲染
+		if (!originalCropCanvas) {
+			alert("请先选择并裁剪一张图片");
+			return;
+		}
+		// 先用原始裁剪图覆盖画布，再做新抖动
+		ctx.fillStyle = "#fff";
+		ctx.fillRect(0,0,152,152);
+		ctx.drawImage(originalCropCanvas, 0, 0, 152, 152);
+		convert_dithering();
+	}
+
+	function convert_dithering() {
+		const canvas = document.getElementById('canvas');
+		const ctx = canvas.getContext("2d");
+		const mode = document.getElementById('dithering').value;
+		if (mode.startsWith('bwr')) {
+			ditheringCanvasByPalette(canvas, bwrPalette, mode);
+		} else {
+			dithering(ctx, canvas.width, canvas.height, parseInt(document.getElementById('threshold').value), mode);
+		}
 	}
 
 	// 原有全部JS逻辑完整保留，无任何删减修改
@@ -392,10 +562,14 @@
 	}
 
 	async function sendCommand(cmd) {
-		if (epdCharacteristic) {
-			await epdCharacteristic.writeValueWithResponse(cmd)
-		} else {
-			addLog('未连接蓝牙，服务不可用')
+		try {
+			if (epdCharacteristic) {
+				await epdCharacteristic.writeValueWithResponse(cmd)
+			} else {
+				addLog('未连接蓝牙，服务不可用')
+			}
+		} catch (err) {
+			addLog(`指令发送失败：${err.message}`);
 		}
 	}
 
@@ -406,10 +580,14 @@
 	}
 
 	async function rxTxSendCommand(cmd) {
-	  if (rxtxCharacteristic) {
-		await rxtxCharacteristic.writeValueWithResponse(cmd);
-	  } else {
-		  addLog('未连接蓝牙，串口服务不可用')
+	  try {
+		  if (rxtxCharacteristic) {
+			await rxtxCharacteristic.writeValueWithResponse(cmd);
+		  } else {
+			  addLog('未连接蓝牙，串口服务不可用')
+		  }
+	  } catch (err) {
+		  addLog(`串口指令发送失败：${err.message}`);
 	  }
 	}
 
@@ -428,6 +606,7 @@
 		for (let i = 0; i < arr.length; i += step) {
 			addLog(`正在上传第${partIndex+1}块. 块长度: ${step}字节`);
 			await sendCommand(hexToBytes("03" + arr.slice(i, i + step)));
+			await delay(30); // 苹果防断连延时
 			partIndex += 1;
 		}
 
@@ -446,6 +625,7 @@
 		for (let i = 0; i < value.length; i += step) {
 			addLog(`发送分片${partIndex+1}，偏移地址: ${i/2}`);
 			await sendCommand(hexToBytes("03" + code + intToHex(i / 2, 2) + value.substring(i, i + step)));
+			await delay(30); // 苹果关键延时，防止蓝牙断开
 			partIndex += 1;
 		}
 	}
@@ -514,29 +694,39 @@
 		document.getElementById("connectbutton").innerHTML = '连接设备';
 	}
 
+	// 苹果兼容核心：蓝牙请求提升到点击同步第一层，解决Safari拦截
 	async function preConnect() {
-		if (gattServer != null && gattServer.connected) {
-			if (bleDevice != null && bleDevice.gatt.connected)
-				bleDevice.gatt.disconnect();
-		}
-		else {
-			reconnectTrys = 0;
-			bleDevice = await navigator.bluetooth.requestDevice({ optionalServices: ['0000221f-0000-1000-8000-00805f9b34fb', '00001f10-0000-1000-8000-00805f9b34fb', '13187b10-eba9-a3ba-044e-83d3217d9a38'], acceptAllDevices: true });
-			bleDevice.addEventListener('gattserverdisconnected', disconnect);
-			try {
-				await connect();
-			} catch (e) {
-				await handleError(e);
+		try {
+			if (gattServer != null && gattServer.connected) {
+				if (bleDevice != null && bleDevice.gatt.connected)
+					bleDevice.gatt.disconnect();
 			}
+			else {
+				reconnectTrys = 0;
+				// 蓝牙搜索放在点击同步第一层
+				bleDevice = await navigator.bluetooth.requestDevice({
+					optionalServices: ['0000221f-0000-1000-8000-00805f9b34fb', '00001f10-0000-1000-8000-00805f9b34fb', '13187b10-eba9-a3ba-044e-83d3217d9a38'],
+					acceptAllDevices: true
+				});
+				bleDevice.addEventListener('gattserverdisconnected', disconnect);
+				await connect();
+			}
+		} catch (e) {
+			addLog(`蓝牙搜索失败：${e.message}，苹果手机推荐使用Bluefy浏览器打开页面`);
+			console.error(e);
+			await handleError(e);
 		}
 	}
 
 	async function connectRXTX() {
-		rxtxService = await gattServer.getPrimaryService('00001f10-0000-1000-8000-00805f9b34fb');
-		addLog('✅ 找到串口服务');
-
-		rxtxCharacteristic = await rxtxService.getCharacteristic('00001f1f-0000-1000-8000-00805f9b34fb');
-		addLog('✅ 串口通道建立完成');
+		try {
+			rxtxService = await gattServer.getPrimaryService('00001f10-0000-1000-8000-00805f9b34fb');
+			addLog('✅ 找到串口服务');
+			rxtxCharacteristic = await rxtxService.getCharacteristic('00001f1f-0000-1000-8000-00805f9b34fb');
+			addLog('✅ 串口通道建立完成');
+		} catch (err) {
+			addLog(`串口服务获取失败：${err.message}`);
+		}
 	}
 
 	async function reConnect() {
@@ -544,32 +734,32 @@
 			bleDevice.gatt.disconnect();
 		resetVariables();
 		addLog("正在重新建立蓝牙连接...");
-		setTimeout(async function () { await connect(); }, 300);
+		// 苹果拉长重连延时300→800ms
+		setTimeout(async function () { await connect(); }, 800);
 	}
 
 	async function connect() {
-		if (epdCharacteristic == null) {
-			addLog("正在连接设备: " + bleDevice.name);
-
-			gattServer = await bleDevice.gatt.connect();
-			addLog('✅ 成功连接GATT服务端');
-
-			epdService = await gattServer.getPrimaryService('13187b10-eba9-a3ba-044e-83d3217d9a38');
-			addLog('✅ 墨水屏服务已识别');
-
-			epdCharacteristic = await epdService.getCharacteristic('4b646063-6264-f3a7-8941-e65356ea82fe');
-			addLog('✅ 屏幕数据通道就绪');
-
-			await epdCharacteristic.startNotifications();
-
-			epdCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
-				console.log('epd ret', bytesToHex(event.target.value.buffer))
-				const count = parseInt('0x'+ bytesToHex(event.target.value.buffer));
-				addLog(`📥 设备回传数据: ${count} 字节`);
-			});
-
-			document.getElementById("connectbutton").innerHTML = '断开连接';
-			await connectRXTX();
+		try {
+			if (epdCharacteristic == null) {
+				addLog("正在连接设备: " + bleDevice.name);
+				gattServer = await bleDevice.gatt.connect();
+				addLog('✅ 成功连接GATT服务端');
+				epdService = await gattServer.getPrimaryService('13187b10-eba9-a3ba-044e-83d3217d9a38');
+				addLog('✅ 墨水屏服务已识别');
+				epdCharacteristic = await epdService.getCharacteristic('4b646063-6264-f3a7-8941-e65356ea82fe');
+				addLog('✅ 屏幕数据通道就绪');
+				await epdCharacteristic.startNotifications();
+				epdCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+					console.log('epd ret', bytesToHex(event.target.value.buffer))
+					const count = parseInt('0x'+ bytesToHex(event.target.value.buffer));
+					addLog(`📥 设备回传数据: ${count} 字节`);
+				});
+				document.getElementById("connectbutton").innerHTML = '断开连接';
+				await connectRXTX();
+			}
+		} catch (err) {
+			addLog(`设备连接异常：${err.message}`);
+			disconnect();
 		}
 	}
 
@@ -595,26 +785,6 @@
 		return {unixNow, localeTimeString, year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate(), week: date.getDay() || 7}
 	}
 
-	async function update_image () {
-		const image_file = document.getElementById('image_file');
-		if (image_file.files.length > 0) {
-			const file = image_file.files[0];
-
-			const canvas = document.getElementById('canvas');
-			const ctx = canvas.getContext("2d");
-
-			const image = new Image();
-			image.src = URL.createObjectURL(file);
-			image.onload = function(event) {
-				URL.revokeObjectURL(this.src);
-				ctx.fillStyle = "#fff";
-				ctx.fillRect(0,0,152,152);
-				ctx.drawImage(image, 0, 0, image.width, image.height, 0, 0, 152, 152);
-				convert_dithering()
-			}
-		}
-	}
-
 	function get_position(canvas, x, y){
 		let rect = canvas.getBoundingClientRect()
 		return {
@@ -629,17 +799,8 @@
 			const ctx = canvas.getContext("2d");
 			ctx.fillStyle = 'white';
 			ctx.fillRect(0, 0, canvas.width, canvas.height);
-		}
-	}
-
-	function convert_dithering() {
-		const canvas = document.getElementById('canvas');
-		const ctx = canvas.getContext("2d");
-		const mode = document.getElementById('dithering').value;
-		if (mode.startsWith('bwr')) {
-			ditheringCanvasByPalette(canvas, bwrPalette, mode);
-		} else {
-			dithering(ctx, canvas.width, canvas.height, parseInt(document.getElementById('threshold').value), mode);
+			// 清空原图缓存
+			originalCropCanvas = null;
 		}
 	}
 
