@@ -29,15 +29,6 @@
 			line-height: 1.48;
 		}
 
-		#deviceTip {
-			background:#e8f4ff;
-			padding:12px;
-			border-radius:14px;
-			margin-bottom:20px;
-			color:#0071e3;
-			text-align:center;
-		}
-
 		.wrap {
 			max-width: 920px;
 			margin: 0 auto;
@@ -231,6 +222,43 @@
 			max-width: 100%;
 		}
 
+		/* 手机端全局适配样式 */
+		body.mobile {
+			padding: 16px 8px;
+		}
+		body.mobile .wrap {
+			padding: 22px 16px;
+			border-radius: 16px;
+		}
+		body.mobile h2 {
+			font-size: 24px;
+			margin-bottom: 24px;
+		}
+		body.mobile .section {
+			padding-bottom: 16px;
+			margin-bottom: 16px;
+		}
+		body.mobile .tool-bar {
+			padding: 12px;
+			flex-direction: column;
+			align-items: flex-start;
+			gap:6px;
+		}
+		body.mobile button {
+			width: 100%;
+			margin:4px 0;
+		}
+		body.mobile .modal-box {
+			padding: 18px;
+			border-radius: 16px;
+		}
+		body.mobile input[type="file"],
+		body.mobile input[type="number"],
+		body.mobile select {
+			width: 100%;
+			margin:4px 0;
+		}
+
 		@media screen and (max-width: 620px) {
 			.wrap {
 				padding: 24px 20px;
@@ -253,7 +281,6 @@
 
 <body>
 	<div class="wrap">
-		<div id="deviceTip"></div>
 		<h2>Etag图片上传工具</h2>
 		<h5>设备蓝牙名称ESL/S24_*****</h5>
 
@@ -365,16 +392,17 @@ let cropper = null;
 let tempFileObj = null;
 let originalCropCanvas = null;
 
-document.addEventListener('DOMContentLoaded', function(){
+// 自动识别手机/PC，手机添加class优化布局
+function detectMobileDevice() {
 	const ua = navigator.userAgent;
-	const tipBox = document.getElementById("deviceTip");
-	if(/iPhone|iPad|iPod/.test(ua)){
-		tipBox.innerText = "苹果用户提示：微信/QQ内置浏览器屏蔽蓝牙！优先下载Bluefy浏览器；Safari需手动开启Web Bluetooth";
-	}else if(/Android/.test(ua)){
-		tipBox.innerText = "安卓：开启蓝牙+定位，推荐Chrome/Kiwi浏览器打开";
-	}else{
-		tipBox.style.display = 'none';
+	const mobileReg = /iPhone|iPad|iPod|Android|HarmonyOS|Mobile/i;
+	if(mobileReg.test(ua)){
+		document.body.classList.add('mobile');
 	}
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+	detectMobileDevice();
 })
 
 function fixIosImgRotate(img) {
@@ -540,7 +568,7 @@ async function rxTxSendCommand(cmd) {
 	  } else {
 		  addLog('未连接蓝牙，串口服务不可用')
 	  }
-  } catch (err) {
+  } catch (err)
 	  addLog(`串口指令发送失败：${err.message}`);
   }
 }
@@ -691,7 +719,7 @@ async function preConnect() {
 			await connect();
 		}
 	} catch (e) {
-		addLog(`蓝牙搜索失败：${e.message}，苹果手机推荐使用Bluefy浏览器打开页面`);
+		addLog(`蓝牙搜索失败：${e.message}`);
 		console.error(e);
 		await handleError(e);
 	}
@@ -735,7 +763,7 @@ async function connect() {
 			document.getElementById("connectbutton").innerHTML = '断开连接';
 			await connectRXTX();
 		}
-	} catch (err) {
+	} catch (err)
 		addLog(`设备连接异常：${err.message}`);
 		disconnect();
 	}
