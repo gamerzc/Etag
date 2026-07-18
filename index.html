@@ -540,7 +540,7 @@ async function rxTxSendCommand(cmd) {
 	  } else {
 		  addLog('未连接蓝牙，串口服务不可用')
 	  }
-  } catch (err) {
+  } catch (err)
 	  addLog(`串口指令发送失败：${err.message}`);
   }
 }
@@ -552,7 +552,7 @@ async function sendBufferSerial(hexStr, codeType){
 		return;
 	}
 	isBusySending = true;
-	const CHUNK_LEN = 10;
+	const CHUNK_LEN = 120;
 	let index = 0;
 	const totalLen = hexStr.length;
 	const code = codeType === 'bwr' ? '00' : 'ff';
@@ -592,7 +592,7 @@ async function upload_tiff_image() {
 	await sendCommand(hexToBytes("0000"));
 	await sendCommand(hexToBytes("020000"));
 
-	const step = 10;
+	const step = 120;
 	let partIndex = 0;
 	for (let i = 0; i < arr.length; i += step) {
 		addLog(`正在上传第${partIndex+1}块. 块长度: ${step}字节`);
@@ -614,9 +614,21 @@ async function upload_image() {
 		return;
 	}
 
-	// 修复2：删除页面画布左旋90°旋转，由固件端统一180翻转
-	const bwData = bytesToHex(canvas2bytes(canvasOrigin));
-	const redData = bytesToHex(canvas2bytes(canvasOrigin, 'bwr'));
+	// 新增：创建临时画布，图片右旋90度（网页端旋转功能恢复）
+	const tempCanvas = document.createElement('canvas');
+	tempCanvas.width = 152;
+	tempCanvas.height = 152;
+	const tempCtx = tempCanvas.getContext('2d');
+	tempCtx.save();
+	// 向右旋转90度
+	tempCtx.translate(152, 0);
+	tempCtx.rotate(Math.PI / 2);
+	tempCtx.drawImage(canvasOrigin, 0, 0, 152, 152);
+	tempCtx.restore();
+
+	// 使用旋转后的临时画布生成上传数据
+	const bwData = bytesToHex(canvas2bytes(tempCanvas));
+	const redData = bytesToHex(canvas2bytes(tempCanvas, 'bwr'));
 
 	await sendCommand(hexToBytes("0000"));
 	await sendCommand(hexToBytes("020000"));
@@ -723,7 +735,7 @@ async function connect() {
 			document.getElementById("connectbutton").innerHTML = '断开连接';
 			await connectRXTX();
 		}
-	} catch (err) {
+	} catch (err)
 		addLog(`设备连接异常：${err.message}`);
 		disconnect();
 	}
