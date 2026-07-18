@@ -28,6 +28,23 @@
 			overflow-y: auto;
 			line-height: 1.48;
 		}
+		/* 手机全局样式覆盖 */
+		body.mobile {
+			padding: 20px 10px;
+		}
+
+		#deviceTip {
+			background:#e8f4ff;
+			padding:12px;
+			border-radius:14px;
+			margin-bottom:20px;
+			color:#0071e3;
+			text-align:center;
+			display: none;
+		}
+		body.mobile #deviceTip {
+			display: block;
+		}
 
 		.wrap {
 			max-width: 920px;
@@ -36,6 +53,10 @@
 			border-radius: 24px;
 			box-shadow: 0 4px 32px rgba(0, 0, 0, 0.05);
 			padding: 44px;
+		}
+		body.mobile .wrap {
+			padding: 22px 16px;
+			border-radius: 18px;
 		}
 
 		h2 {
@@ -46,6 +67,10 @@
 			margin-bottom: 40px;
 			letter-spacing: 0.3px;
 		}
+		body.mobile h2 {
+			font-size: 24px;
+			margin-bottom: 20px;
+		}
 
 		h3 {
 			font-size: 19px;
@@ -53,11 +78,28 @@
 			color: #48484a;
 			margin-bottom: 14px;
 		}
+		body.mobile h3 {
+			font-size: 17px;
+		}
+
+		h5 {
+			text-align: center;
+			color:#666;
+			margin-bottom:24px;
+		}
+		body.mobile h5 {
+			font-size:13px;
+			margin-bottom:16px;
+		}
 
 		.section {
 			padding-bottom: 28px;
 			margin-bottom: 28px;
 			border-bottom: 1px solid #e8e8ed;
+		}
+		body.mobile .section {
+			padding-bottom: 18px;
+			margin-bottom: 18px;
 		}
 		.section:last-of-type {
 			border-bottom: none;
@@ -74,6 +116,11 @@
 			cursor: pointer;
 			transition: all 0.22s ease;
 			margin: 4px 6px;
+		}
+		body.mobile button {
+			width: 100%;
+			margin: 6px 0;
+			padding: 10px;
 		}
 		.btn-primary {
 			background-color: #0071e3;
@@ -117,6 +164,12 @@
 			transition: border-color 0.2s;
 			margin: 0 6px;
 		}
+		body.mobile input[type="file"],
+		body.mobile input[type="number"],
+		body.mobile select {
+			width: 100%;
+			margin: 6px 0;
+		}
 		input:focus,
 		select:focus {
 			border-color: #0071e3;
@@ -132,6 +185,11 @@
 			border-radius: 18px;
 			margin-bottom: 16px;
 		}
+		body.mobile .tool-bar {
+			flex-direction: column;
+			align-items: flex-start;
+			padding:12px;
+		}
 
 		.canvas-wrap {
 			margin: 20px 0;
@@ -139,6 +197,9 @@
 			flex-direction: column;
 			align-items: flex-start;
 			gap:12px;
+		}
+		body.mobile .canvas-wrap {
+			align-items: center;
 		}
 		#canvas {
 			border: 1px solid #d2d2d7;
@@ -197,6 +258,10 @@
 			opacity: 0;
 			transition: all 0.24s ease;
 		}
+		body.mobile .modal-box {
+			padding: 18px;
+			border-radius: 18px;
+		}
 		.modal-mask.show {
 			display: flex;
 		}
@@ -222,43 +287,6 @@
 			max-width: 100%;
 		}
 
-		/* 手机端全局适配样式 */
-		body.mobile {
-			padding: 16px 8px;
-		}
-		body.mobile .wrap {
-			padding: 22px 16px;
-			border-radius: 16px;
-		}
-		body.mobile h2 {
-			font-size: 24px;
-			margin-bottom: 24px;
-		}
-		body.mobile .section {
-			padding-bottom: 16px;
-			margin-bottom: 16px;
-		}
-		body.mobile .tool-bar {
-			padding: 12px;
-			flex-direction: column;
-			align-items: flex-start;
-			gap:6px;
-		}
-		body.mobile button {
-			width: 100%;
-			margin:4px 0;
-		}
-		body.mobile .modal-box {
-			padding: 18px;
-			border-radius: 16px;
-		}
-		body.mobile input[type="file"],
-		body.mobile input[type="number"],
-		body.mobile select {
-			width: 100%;
-			margin:4px 0;
-		}
-
 		@media screen and (max-width: 620px) {
 			.wrap {
 				padding: 24px 20px;
@@ -281,6 +309,7 @@
 
 <body>
 	<div class="wrap">
+		<div id="deviceTip"></div>
 		<h2>Etag图片上传工具</h2>
 		<h5>设备蓝牙名称ESL/S24_*****</h5>
 
@@ -392,17 +421,23 @@ let cropper = null;
 let tempFileObj = null;
 let originalCropCanvas = null;
 
-// 自动识别手机/PC，手机添加class优化布局
-function detectMobileDevice() {
-	const ua = navigator.userAgent;
-	const mobileReg = /iPhone|iPad|iPod|Android|HarmonyOS|Mobile/i;
-	if(mobileReg.test(ua)){
-		document.body.classList.add('mobile');
-	}
-}
-
 document.addEventListener('DOMContentLoaded', function(){
-	detectMobileDevice();
+	const ua = navigator.userAgent;
+	const tipBox = document.getElementById("deviceTip");
+	// 自动判断手机设备，给body加mobile类适配样式
+	const isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
+	if(isMobile){
+		document.body.classList.add('mobile');
+		// 自动填充手机提示文案
+		if(/iPhone|iPad|iPod/.test(ua)){
+			tipBox.innerText = "苹果用户：微信/QQ内置浏览器屏蔽蓝牙！请使用Bluefy或Safari打开";
+		}else{
+			tipBox.innerText = "安卓：开启蓝牙+定位，推荐Chrome/Kiwi浏览器访问";
+		}
+	}else{
+		// PC端隐藏提示模块
+		tipBox.style.display = 'none';
+	}
 })
 
 function fixIosImgRotate(img) {
@@ -719,7 +754,7 @@ async function preConnect() {
 			await connect();
 		}
 	} catch (e) {
-		addLog(`蓝牙搜索失败：${e.message}`);
+		addLog(`蓝牙搜索失败：${e.message}，苹果手机推荐使用Bluefy浏览器打开页面`);
 		console.error(e);
 		await handleError(e);
 	}
