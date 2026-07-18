@@ -552,7 +552,7 @@ async function sendBufferSerial(hexStr, codeType){
 		return;
 	}
 	isBusySending = true;
-	const CHUNK_LEN = 480;
+	const CHUNK_LEN = 240;
 	let index = 0;
 	const totalLen = hexStr.length;
 	const code = codeType === 'bwr' ? '00' : 'ff';
@@ -592,7 +592,7 @@ async function upload_tiff_image() {
 	await sendCommand(hexToBytes("0000"));
 	await sendCommand(hexToBytes("020000"));
 
-	const step = 480;
+	const step = 240;
 	let partIndex = 0;
 	for (let i = 0; i < arr.length; i += step) {
 		addLog(`正在上传第${partIndex+1}块. 块长度: ${step}字节`);
