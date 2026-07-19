@@ -483,6 +483,7 @@
 	let epdCharacteristic;
 	let rxtxCharacteristic;
 	let reconnectTrys = 0;
+	let isBusySending = false;
 
 	function delay(delayInms) {
 	  return new Promise(resolve => {
@@ -671,22 +672,27 @@ async function upload_image() {
 		document.getElementById("connectbutton").innerHTML = '连接设备';
 	}
 
-	async function preConnect() {
+async function preConnect() {
+	try {
 		if (gattServer != null && gattServer.connected) {
 			if (bleDevice != null && bleDevice.gatt.connected)
 				bleDevice.gatt.disconnect();
 		}
 		else {
 			reconnectTrys = 0;
-			bleDevice = await navigator.bluetooth.requestDevice({ optionalServices: ['0000221f-0000-1000-8000-00805f9b34fb', '00001f10-0000-1000-8000-00805f9b34fb', '13187b10-eba9-a3ba-044e-83d3217d9a38'], acceptAllDevices: true });
+			bleDevice = await navigator.bluetooth.requestDevice({
+				optionalServices: ['0000221f-0000-1000-8000-00805f9b34fb', '00001f10-0000-1000-8000-00805f9b34fb', '13187b10-eba9-a3ba-044e-83d3217d9a38'],
+				acceptAllDevices: true
+			});
 			bleDevice.addEventListener('gattserverdisconnected', disconnect);
-			try {
-				await connect();
-			} catch (e) {
-				await handleError(e);
-			}
+			await connect();
 		}
+	} catch (e) {
+		addLog(`蓝牙搜索失败：${e.message}，苹果手机推荐使用Bluefy浏览器打开页面`);
+		console.error(e);
+		await handleError(e);
 	}
+}
 
 	async function connectRXTX() {
 		rxtxService = await gattServer.getPrimaryService('00001f10-0000-1000-8000-00805f9b34fb');
