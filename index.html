@@ -538,6 +538,43 @@
 	  }
 	}
 
+// 修复1：分片缩小10字节，延时50ms稳定发包
+async function sendBufferSerial(hexStr, codeType){
+	if(isBusySending){
+		addLog("正在传输中，请等待当前上传完成！");
+		return;
+	}
+	isBusySending = true;
+	const CHUNK_LEN = 240;
+	let index = 0;
+	const totalLen = hexStr.length;
+	const code = codeType === 'bwr' ? '00' : 'ff';
+	addLog(`通道${codeType}总十六进制长度：${totalLen}，字节数：${totalLen/2}`);
+
+	while(index < totalLen){
+		const chunkHex = hexStr.slice(index, index + CHUNK_LEN);
+		const offset = Math.floor(index / 2);
+		const sendBuf = hexToBytes("03" + code + intToHex(offset, 2) + chunkHex);
+		try{
+			await epdCharacteristic.writeValueWithResponse(sendBuf);
+			addLog(`分片发送成功，偏移:${offset} 长度${chunkHex.length/2}字节`);
+		}catch(e){
+			addLog(`分片发送失败，重试当前包:${e.message}`);
+			await delay(50);
+			continue;
+		}
+		index += CHUNK_LEN;
+		await delay(50);
+	}
+	isBusySending = false;
+	addLog(`【通道${codeType}】全部分片发送完毕`);
+}
+
+async function sendBufferData(value, type) {
+	addLog(`开始发送图像通道:${type}, 总数据 ${(value.length/2/1024).toFixed(2)}KB`);
+	await sendBufferSerial(value, type);
+}
+	
 	async function upload_tiff_image() {
 		const startTime = new Date().getTime();
 		const buffer = await document.getElementById('tiff_file').files[0].arrayBuffer();
@@ -548,7 +585,7 @@
 		await sendCommand(hexToBytes("0000"));
 		await sendCommand(hexToBytes("020000"));
 
-		const step = 480;
+		const step = 240;
 		let partIndex = 0;
 		for (let i = 0; i < arr.length; i += step) {
 			addLog(`正在上传第${partIndex+1}块. 块长度: ${step}字节`);
@@ -560,53 +597,48 @@
 		addLog(`TIFF上传完成，耗时${((new Date().getTime() - startTime)/1000).toFixed(2)}s`);
 	}
 
-	async function sendBufferData(value, type) {
-		addLog(`开始发送图像通道:${type}, 总数据 ${(value.length/2/1024).toFixed(2)}KB`);
-		let code = 'ff';
-		if (type === 'bwr') {
-			code = '00';
-		}
-		const step = 480;
-		let partIndex = 0;
-		for (let i = 0; i < value.length; i += step) {
-			addLog(`发送分片${partIndex+1}，偏移地址: ${i/2}`);
-			await sendCommand(hexToBytes("03" + code + intToHex(i / 2, 2) + value.substring(i, i + step)));
-			partIndex += 1;
-		}
+
+
+async function upload_image() {
+	const canvasOrigin = document.getElementById('canvas');
+	const startTime = new Date().getTime();
+
+	if(isBusySending){
+		alert("图片正在上传，请勿重复点击！");
+		return;
 	}
 
-	async function upload_image() {
-    	const canvasOrigin = document.getElementById('canvas');
-    	const ctxOrigin = canvasOrigin.getContext('2d');
-    	const startTime = new Date().getTime();
 
-    // 创建离屏画布，用于旋转图像，不影响页面预览画布
-    	const offCanvas = document.createElement('canvas');
-    	const offCtx = offCanvas.getContext('2d');
-    // 原图152*152，左旋90后宽高互换
-    	offCanvas.width = canvasOrigin.height;
-    	offCanvas.height = canvasOrigin.width;
+// 新增：创建临时画布，图片右旋90度（网页端旋转功能恢复）
+	const tempCanvas = document.createElement('canvas');
+	tempCanvas.width = 152;
+	tempCanvas.height = 152;
+	const tempCtx = tempCanvas.getContext('2d');
+	tempCtx.save();
+	// 向右旋转90度
+	tempCtx.translate(0, 152);
+	tempCtx.rotate(-Math.PI / 2);
+	tempCtx.drawImage(canvasOrigin, 0, 0, 152, 152);
+	tempCtx.restore();
 
-    // 旋转绘制：向左旋转90度
-    	offCtx.save();
-    // 平移原点到新画布右上角
-    	offCtx.translate(0, offCanvas.height);
-    // 逆时针旋转90度
-    	offCtx.rotate(-Math.PI / 2);
-    // 绘制原图
-    	offCtx.drawImage(canvasOrigin, 0, 0);
-    	offCtx.restore();
+	// 使用旋转后的临时画布生成上传数据
+	const bwData = bytesToHex(canvas2bytes(tempCanvas));
+	const redData = bytesToHex(canvas2bytes(tempCanvas, 'bwr'));
 
-    // 下发前置指令
-    	await sendCommand(hexToBytes("0000"));
-    	await sendCommand(hexToBytes("020000"));
-    // 发送旋转后的离屏画布数据
-    	await sendBufferData(bytesToHex(canvas2bytes(offCanvas)), 'bw')
-    	await sendBufferData(bytesToHex(canvas2bytes(offCanvas, 'bwr')), 'bwr')
-    	await sendCommand(hexToBytes("0101"))
+	await sendCommand(hexToBytes("0000"));
+	await sendCommand(hexToBytes("020000"));
 
-    	addLog(`屏幕刷新完成，耗时${((new Date().getTime() - startTime)/1000).toFixed(2)}s`);
+	// 修复3：先发黑白缓存，等待完成再发红色缓存
+	await sendBufferData(bwData, 'bw');
+	await delay(100);
+	await sendBufferData(redData, 'bwr');
+	// 修复4：双通道全部发完延时200ms再刷新屏幕，防止固件没读完缓存
+	await delay(200);
+	await sendCommand(hexToBytes("0101"))
+
+	addLog(`屏幕刷新指令下发完成，总耗时${((new Date().getTime() - startTime)/1000).toFixed(2)}s`);
 }
+
 
 	async function upload_epd_buffer() {
 		const startTime = new Date().getTime();
